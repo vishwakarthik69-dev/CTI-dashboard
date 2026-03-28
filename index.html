@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CTI Dashboard</title>
+</head>
+
+<body style="background-color:black; color:white; text-align:center;">
+
+<h2>Cyber Threat Intelligence Dashboard</h2>
+
+<form method="POST" action="/check">
+    <input type="text" name="ip" placeholder="Enter IP">
+    <button type="submit">Check</button>
+</form>
+
+{% if ip %}
+    <h3>Results for: {{ ip }}</h3>
+
+    <p>Malicious: {{ malicious }}</p>
+    <p>Suspicious: {{ suspicious }}</p>
+    <p>Harmless: {{ harmless }}</p>
+
+    <h2>Threat Level: {{ threat }}</h2>
+{% endif %}
+
+</body>
+</html>

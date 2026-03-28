@@ -8,7 +8,17 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return render_template("index.html")
+    try:
+        return render_template(
+            "index.html",
+            ip=None,
+            malicious=0,
+            suspicious=0,
+            harmless=0,
+            threat=None
+        )
+    except Exception as e:
+        return str(e)
 
 @app.route('/check', methods=['POST'])
 def check():
