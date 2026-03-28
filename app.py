@@ -8,22 +8,11 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    try:
-        return render_template(
-            "index.html",
-            ip=None,
-            malicious=0,
-            suspicious=0,
-            harmless=0,
-            threat=None
-        )
-    except Exception as e:
-        return str(e)
+    return render_template("index.html", ip=None)
 
 @app.route('/check', methods=['POST'])
 def check():
     ip = request.form.get('ip')
-    print("User entered IP:",ip)
 
     url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
     headers = {"x-apikey": os.getenv("VT_API_KEY")}
@@ -32,11 +21,12 @@ def check():
 
     if response.status_code == 200:
         data = response.json()
-        stats = data['data']['attributes']['last_analysis_stats']
 
-        malicious = stats['malicious']
-        suspicious = stats['suspicious']
-        harmless = stats['harmless']
+        stats = data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {})
+
+        malicious = stats.get('malicious', 0)
+        suspicious = stats.get('suspicious', 0)
+        harmless = stats.get('harmless', 0)
 
         if malicious > 5:
             threat = "HIGH"
@@ -53,11 +43,12 @@ def check():
             harmless=harmless,
             threat=threat
         )
-    else:
-        return "Error fetching data"
+
+    return render_template("index.html", ip=None)
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0',port=10000)
+    app.run(debug=True)
+
 
 
 
