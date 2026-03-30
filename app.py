@@ -56,7 +56,13 @@ def home():
                 geo_res = requests.get(f"https://ipinfo.io/{ip}?token={IPINFO_TOKEN}")
                 geo = geo_res.json()
 
-            # 🔗 URL ANALYSIS (FINAL)
+                # Extract lat/lon
+                if "loc" in geo:
+                    lat, lon = geo["loc"].split(",")
+                    geo["lat"] = lat
+                    geo["lon"] = lon
+
+            # 🔗 URL ANALYSIS
             if url_input:
                 submit_url = "https://www.virustotal.com/api/v3/urls"
                 submit_res = requests.post(submit_url, headers=headers, data={"url": url_input})
@@ -65,7 +71,6 @@ def home():
                 analysis_id = submit_data["data"]["id"]
                 result_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
 
-                # Polling
                 for _ in range(10):
                     result_res = requests.get(result_url, headers=headers)
                     result_data = result_res.json()
