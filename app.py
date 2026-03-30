@@ -1,20 +1,106 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for, session
 import requests
 import datetime
 import time
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-
-history = []
+app.secret_key = "supersecretkey"
 
 VT_API_KEY = "839e507082d42b9c82da344d8d9441d96ef75317779d33e5842d97f6dd09a419"
 IPINFO_TOKEN = "3759920718a5c7"
 
+# 📌 CREATE DATABASE
+def init_db():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        value TEXT,
+        time TEXT
+    )''')
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# 🔐 LOGIN REQUIRED
+def login_required(func):
+    def wrapper(*args, **kwargs):
+        if "user" not in session:
+            return redirect(url_for("login"))
+        return func(*args, **kwargs)
+    wrapper.__name__ = func.__name__
+    return wrapper
+
+# 📝 SIGNUP
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = generate_password_hash(request.form['password'])
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        try:
+            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+            conn.commit()
+        except:
+            return "User already exists"
+
+        conn.close()
+        return redirect(url_for('login'))
+
+    return render_template('signup.html')
+
+# 🔑 LOGIN
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        c.execute("SELECT password FROM users WHERE username=?", (username,))
+        user = c.fetchone()
+        conn.close()
+
+        if user and check_password_hash(user[0], password):
+            session['user'] = username
+            return redirect(url_for('home'))
+
+    return render_template('login.html')
+
+# 🚪 LOGOUT
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect(url_for('login'))
+
+# 🏠 HOME
 @app.route('/', methods=['GET', 'POST'])
+@login_required
 def home():
     result = None
     geo = None
     chart_data = None
+    user = session.get("user")
+
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
 
     if request.method == 'POST':
         ip = request.form.get('ip')
@@ -25,11 +111,8 @@ def home():
 
             # 🔍 IP ANALYSIS
             if ip:
-                vt_url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
-                response = requests.get(vt_url, headers=headers)
-                data = response.json()
-
-                stats = data["data"]["attributes"]["last_analysis_stats"]
+                vt = requests.get(f"https://www.virustotal.com/api/v3/ip_addresses/{ip}", headers=headers).json()
+                stats = vt["data"]["attributes"]["last_analysis_stats"]
 
                 malicious = stats["malicious"]
                 suspicious = stats["suspicious"]
@@ -41,22 +124,10 @@ def home():
                 elif suspicious > 0:
                     threat = "Suspicious"
 
-                result = {
-                    "type": "IP",
-                    "value": ip,
-                    "malicious": malicious,
-                    "suspicious": suspicious,
-                    "harmless": harmless,
-                    "threat": threat
-                }
-
+                result = {"type":"IP","value":ip,"malicious":malicious,"suspicious":suspicious,"harmless":harmless,"threat":threat}
                 chart_data = [malicious, suspicious, harmless]
 
-                # 🌍 GEOLOCATION
-                geo_res = requests.get(f"https://ipinfo.io/{ip}?token={IPINFO_TOKEN}")
-                geo = geo_res.json()
-
-                # Extract lat/lon
+                geo = requests.get(f"https://ipinfo.io/{ip}?token={IPINFO_TOKEN}").json()
                 if "loc" in geo:
                     lat, lon = geo["loc"].split(",")
                     geo["lat"] = lat
@@ -64,21 +135,17 @@ def home():
 
             # 🔗 URL ANALYSIS
             if url_input:
-                submit_url = "https://www.virustotal.com/api/v3/urls"
-                submit_res = requests.post(submit_url, headers=headers, data={"url": url_input})
-                submit_data = submit_res.json()
+                submit = requests.post("https://www.virustotal.com/api/v3/urls",
+                                       headers=headers, data={"url": url_input}).json()
 
-                analysis_id = submit_data["data"]["id"]
-                result_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
+                analysis_id = submit["data"]["id"]
 
                 for _ in range(10):
-                    result_res = requests.get(result_url, headers=headers)
-                    result_data = result_res.json()
+                    res = requests.get(f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                                       headers=headers).json()
 
-                    status = result_data["data"]["attributes"]["status"]
-
-                    if status == "completed":
-                        stats = result_data["data"]["attributes"]["stats"]
+                    if res["data"]["attributes"]["status"] == "completed":
+                        stats = res["data"]["attributes"]["stats"]
 
                         malicious = stats["malicious"]
                         suspicious = stats["suspicious"]
@@ -90,42 +157,30 @@ def home():
                         elif suspicious > 0:
                             threat = "Suspicious"
 
-                        result = {
-                            "type": "URL",
-                            "value": url_input,
-                            "malicious": malicious,
-                            "suspicious": suspicious,
-                            "harmless": harmless,
-                            "threat": threat
-                        }
-
+                        result = {"type":"URL","value":url_input,"malicious":malicious,"suspicious":suspicious,"harmless":harmless,"threat":threat}
                         chart_data = [malicious, suspicious, harmless]
                         break
 
                     time.sleep(2)
 
-                else:
-                    result = {
-                        "type": "URL",
-                        "value": url_input,
-                        "message": "Still processing... try again"
-                    }
-
-            # 📝 HISTORY
-            history.append({
-                "value": ip or url_input,
-                "time": datetime.datetime.now().strftime("%H:%M:%S")
-            })
+            # 📝 SAVE HISTORY
+            c.execute("INSERT INTO history (username, value, time) VALUES (?, ?, ?)",
+                      (user, ip or url_input, datetime.datetime.now().strftime("%H:%M:%S")))
+            conn.commit()
 
         except Exception as e:
             result = {"error": str(e)}
 
-    return render_template("index.html", result=result, geo=geo, history=history, chart_data=chart_data)
+    # LOAD USER HISTORY
+    c.execute("SELECT value, time FROM history WHERE username=?", (user,))
+    history = [{"value": row[0], "time": row[1]} for row in c.fetchall()]
 
+    conn.close()
+
+    return render_template("index.html", result=result, geo=geo, history=history, chart_data=chart_data, user=user)
 
 if __name__ == "__main__":
     app.run(debug=True)
-
 
 
 
