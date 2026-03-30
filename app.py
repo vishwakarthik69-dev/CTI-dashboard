@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request
 import requests
 import datetime
+import time
 
 app = Flask(__name__)
 
@@ -20,11 +21,11 @@ def home():
         url_input = request.form.get('url')
 
         try:
-            # 🔍 IP Analysis (VirusTotal)
+            headers = {"x-apikey": VT_API_KEY}
+
+            # 🔍 IP ANALYSIS
             if ip:
                 vt_url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
-                headers = {"x-apikey": VT_API_KEY}
-
                 response = requests.get(vt_url, headers=headers)
                 data = response.json()
 
@@ -34,12 +35,11 @@ def home():
                 suspicious = stats["suspicious"]
                 harmless = stats["harmless"]
 
+                threat = "Safe"
                 if malicious > 0:
                     threat = "Malicious"
                 elif suspicious > 0:
                     threat = "Suspicious"
-                else:
-                    threat = "Safe"
 
                 result = {
                     "type": "IP",
@@ -52,32 +52,68 @@ def home():
 
                 chart_data = [malicious, suspicious, harmless]
 
-                # 🌍 Geolocation
+                # 🌍 GEOLOCATION
                 geo_res = requests.get(f"https://ipinfo.io/{ip}?token={IPINFO_TOKEN}")
                 geo = geo_res.json()
 
-            # 🔗 URL Analysis (VirusTotal)
+            # 🔗 URL ANALYSIS (FINAL)
             if url_input:
-                vt_url = "https://www.virustotal.com/api/v3/urls"
-                headers = {"x-apikey": VT_API_KEY}
+                submit_url = "https://www.virustotal.com/api/v3/urls"
+                submit_res = requests.post(submit_url, headers=headers, data={"url": url_input})
+                submit_data = submit_res.json()
 
-                scan_res = requests.post(vt_url, headers=headers, data={"url": url_input})
-                scan_data = scan_res.json()
+                analysis_id = submit_data["data"]["id"]
+                result_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
 
-                result = {
-                    "type": "URL",
-                    "value": url_input,
-                    "message": "URL submitted for scanning"
-                }
+                # Polling
+                for _ in range(10):
+                    result_res = requests.get(result_url, headers=headers)
+                    result_data = result_res.json()
 
-            # 📝 History
+                    status = result_data["data"]["attributes"]["status"]
+
+                    if status == "completed":
+                        stats = result_data["data"]["attributes"]["stats"]
+
+                        malicious = stats["malicious"]
+                        suspicious = stats["suspicious"]
+                        harmless = stats["harmless"]
+
+                        threat = "Safe"
+                        if malicious > 0:
+                            threat = "Malicious"
+                        elif suspicious > 0:
+                            threat = "Suspicious"
+
+                        result = {
+                            "type": "URL",
+                            "value": url_input,
+                            "malicious": malicious,
+                            "suspicious": suspicious,
+                            "harmless": harmless,
+                            "threat": threat
+                        }
+
+                        chart_data = [malicious, suspicious, harmless]
+                        break
+
+                    time.sleep(2)
+
+                else:
+                    result = {
+                        "type": "URL",
+                        "value": url_input,
+                        "message": "Still processing... try again"
+                    }
+
+            # 📝 HISTORY
             history.append({
                 "value": ip or url_input,
                 "time": datetime.datetime.now().strftime("%H:%M:%S")
             })
 
         except Exception as e:
-            result = {"error": "Something went wrong"}
+            result = {"error": str(e)}
 
     return render_template("index.html", result=result, geo=geo, history=history, chart_data=chart_data)
 
