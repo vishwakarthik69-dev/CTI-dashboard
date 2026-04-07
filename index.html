@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CTI Dashboard</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        .chart-container {
+            width: 400px;
+            height: 300px;
+            margin: auto;
+        }
+    </style>
+</head>
+
+<body class="bg-dark text-light d-flex flex-column min-vh-100">
+
+<div class="card mt-4 bg-dark text-light border-light">
+
+    <div class="d-flex justify-content-between">
+        <h3>Welcome, {{ user }}</h3>
+        <a href="/logout" class="btn btn-danger">Logout</a>
+    </div>
+
+    <h1 class="text-center mb-4">🔐 CTI Dashboard</h1>
+
+    <!-- INPUT -->
+    <form method="POST" class="mb-4">
+        <input type="text" name="ip" class="form-control mb-2" placeholder="Enter IP Address">
+        <input type="text" name="url" class="form-control mb-2" placeholder="Enter URL">
+        <button class="btn btn-primary w-100">Analyze</button>
+    </form>
+
+    <!-- RESULT -->
+    {% if result %}
+    <div class="card p-3 bg-secondary mb-4">
+        <h4>{{ result.type }}: {{ result.value }}</h4>
+
+        {% if result.malicious is defined %}
+            <p>🔴 Malicious: {{ result.malicious }}</p>
+            <p>🟡 Suspicious: {{ result.suspicious }}</p>
+            <p>🟢 Harmless: {{ result.harmless }}</p>
+
+            <h5>Status:
+                <span class="
+                {% if result.threat == 'Malicious' %}text-danger
+                {% elif result.threat == 'Suspicious' %}text-warning
+                {% else %}text-success{% endif %}">
+                {{ result.threat }}
+                </span>
+            </h5>
+        {% endif %}
+
+        {% if result.message %}
+            <p>{{ result.message }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- GEO -->
+    {% if geo %}
+    <div class="card p-3 bg-secondary mb-4">
+        <h4>🌍 Geolocation</h4>
+        <p>{{ geo.city }}, {{ geo.country }}</p>
+        <p>{{ geo.org }}</p>
+    </div>
+    {% endif %}
+
+    <!-- MAP -->
+    {% if geo.lat %}
+    <div class="card p-3 bg-secondary mb-4">
+        <h4>🗺️ Map</h4>
+        <div id="map" style="height:300px;"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([{{ geo.lat }}, {{ geo.lon }}], 10);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        L.marker([{{ geo.lat }}, {{ geo.lon }}]).addTo(map);
+    </script>
+    {% endif %}
+
+    <!-- CHART -->
+    {% if chart_data %}
+    <div class="card p-3 bg-secondary mb-4 text-center">
+        <h4>📊 Chart</h4>
+        <div class="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        new Chart(document.getElementById("chart"), {
+            type: "pie",
+            data: {
+                labels: ["Malicious", "Suspicious", "Harmless"],
+                datasets: [{
+                    data: {{ chart_data }},
+                    backgroundColor: ["red", "yellow", "green"]
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    </script>
+    {% endif %}
+
+    <!-- HISTORY -->
+    <div class="card p-3 bg-secondary">
+        <h4>📜 Your History</h4>
+        <ul>
+            {% for item in history %}
+                <li>{{ item.time }} → {{ item.value }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+</div>
+
+<!-- FOOTER -->
+<footer class="text-center py-3 bg-dark border-top mt-auto">
+    <p class="mb-0">© 2026 CTI Dashboard | Built by M.S.V.KARTHIK04</p>
+</footer>
+
+</body>
+</html>
